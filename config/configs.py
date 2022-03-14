@@ -5,7 +5,7 @@ IMG_WIDTH = 256
 
 
 class Config:
-    def __init__(self):
+    def __init__(self, checkpoint_name='training_checkpoints'):
         self.scribbler = False
         self.folder = 'C:\\Users\\Public\\Desktop\\Tesis\\Models\\Pix2Pix\\'
         self.dataset_name = "shoes"
@@ -22,5 +22,5 @@ class Config:
         self.F_WEIGHT = 100
         self.BUFFER_SIZE = 400
         self.BATCH_SIZE = 1
-        self.checkpoint_dir = self.folder + 'training_checkpoints'
+        self.checkpoint_dir = self.folder + checkpoint_name
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")

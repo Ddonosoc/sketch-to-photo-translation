@@ -1,3 +1,4 @@
+"""Implementation of Pix2Pix Neural Network"""
 import tensorflow as tf
 
 
@@ -43,7 +44,7 @@ def upsample(filters, size, apply_dropout=False):
     return result
 
 
-def Pix2PixGenerator(config):
+def pix2pix_generator(config):
     inputs = tf.keras.layers.Input(shape=[256, 256, 3])
 
     down_stack = [
@@ -94,7 +95,7 @@ def Pix2PixGenerator(config):
     return tf.keras.Model(inputs=inputs, outputs=x)
 
 
-def Pix2PixDiscriminator():
+def pix2pix_discriminator():
     initializer = tf.random_normal_initializer(0., 0.02)
 
     inp = tf.keras.layers.Input(shape=[256, 256, 3], name='input_image')

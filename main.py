@@ -2,7 +2,7 @@ import tensorflow as tf
 import argparse
 import os
 import datetime
-from models.Pix2Pix_GAN import Pix2PixGenerator, Pix2PixDiscriminator
+from models.Pix2Pix_GAN import pix2pix_generator, pix2pix_discriminator
 from models import Pix2PixUtils
 from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2
 from config.configs import Config
@@ -17,18 +17,20 @@ if __name__ == "__main__":
                         help="Use generator and discriminator as example models like simple pix2pix, with mru, with cycle consistency or simple scribbler",
                         required=False, default="simple")
 
+    parser.add_argument("-checkpoint", type=str, help="Checkpoint folder name", required=False, default="training_checkpoints")
+
     pargs = parser.parse_args()
-    configs = Config()
+    configs = Config(pargs.checkpoint)
     if pargs.network == "simple":
-        generator = Pix2PixGenerator(configs)
-        discriminator = Pix2PixDiscriminator()
+        generator = pix2pix_generator(configs)
+        discriminator = pix2pix_discriminator()
         generator_optimizer = Pix2PixUtils.generator_optimizer
         discriminator_optimizer = Pix2PixUtils.discriminator_optimizer
 
     elif pargs.network == "scribbler":
         configs.scribbler = True
-        generator = Pix2PixGenerator(configs)
-        discriminator = Pix2PixDiscriminator()
+        generator = pix2pix_generator(configs)
+        discriminator = pix2pix_discriminator()
         generator_optimizer = Pix2PixUtils.generator_optimizer
         discriminator_optimizer = Pix2PixUtils.discriminator_optimizer
     else:
@@ -66,7 +68,7 @@ if __name__ == "__main__":
 
     if pargs.mode == "train":
         fit(train_dataset, test_dataset, steps=80000, checkpoint=checkpoint,
-            generator=generator, discriminator=discriminator, config=configs)
+            generator=generator, discriminator=discriminator, config=configs, summary_writer=summary_writer)
     else:
         eval_dataset = tf.data.Dataset.list_files(configs.dataset_foldername + '*.png', shuffle=False)
         eval_dataset = eval_dataset.map(load_image_trainv2, num_parallel_calls=AUTOTUNE)
