@@ -7,7 +7,7 @@ IMG_WIDTH = 256
 class Config:
     def __init__(self, checkpoint_name='training_checkpoints'):
         self.scribbler = False
-        self.folder = 'C:\\Users\\Public\\Desktop\\Tesis\\Models\\Pix2Pix\\'
+        self.folder = 'C:\\Users\\Public\\Desktop\\Tesis\\Models\\Quimera\\'
         self.dataset_name = "shoes"
         self.folder_dataset_train = 'C:/Users/Public/Desktop/Tesis/Databases/datasets/pix2pixDafitiQuickdraw/train/'
         self.folder_dataset_test = 'C:/Users/Public/Desktop/Tesis/Models/Evaluation/ResNet50/experiments_results/testBC/'
@@ -24,3 +24,13 @@ class Config:
         self.BATCH_SIZE = 1
         self.checkpoint_dir = self.folder + checkpoint_name
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
+        self.epochs = 200
+        self.epoch_decay = 100
+        self.lr = 0.0002
+        self.beta_1 = 0.5
+        self.len_dataset = 7000
+        self.loss_mode = 'lsgan'
+        self.cycle_loss_weight = 10.0
+        self.identity_loss_weight = 0.5
+        self.gradient_penalty_mode = 'none'
+        self.gradient_penalty_weight = 10.0
