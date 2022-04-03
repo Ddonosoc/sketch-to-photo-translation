@@ -8,6 +8,8 @@ from models.Cycle_LOSS import gradient_penalty
 
 @tf.function
 def train_step(input_image, target, step, generator, discriminator, config, summary_writer, **kwargs):
+    generator = generator[0]
+    discriminator = discriminator[0]
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         gen_output = generator(input_image, training=True)
 

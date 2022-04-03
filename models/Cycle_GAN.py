@@ -2,6 +2,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras as keras
 
+from models.mru_blocks import mru_block
+
 
 def _get_norm_layer(norm):
     if norm == 'none':
@@ -19,7 +21,8 @@ def CycleResnetGenerator(input_shape=(256, 256, 3),
                          dim=64,
                          n_downsamplings=2,
                          n_blocks=9,
-                         norm='instance_norm'):
+                         norm='instance_norm',
+                         use_mru=False):
     Norm = _get_norm_layer(norm)
 
     def _residual_block(x):
@@ -45,24 +48,42 @@ def CycleResnetGenerator(input_shape=(256, 256, 3),
     h = keras.layers.Conv2D(dim, 7, padding='valid', use_bias=False)(h)
     h = Norm()(h)
     h = tf.nn.relu(h)
+    # h = (None, 256, 256, 64)
 
     # 2
-    for _ in range(n_downsamplings):
-        dim *= 2
-        h = keras.layers.Conv2D(dim, 3, strides=2, padding='same', use_bias=False)(h)
-        h = Norm()(h)
-        h = tf.nn.relu(h)
+    K = None
+    if not use_mru:
+        for _ in range(n_downsamplings):
+            dim *= 2
+            h = keras.layers.Conv2D(dim, 3, strides=2, padding='same', use_bias=False)(h)
+            h = Norm()(h)
+            h = tf.nn.relu(h)
+    else:
+        out = h # input  h = (None, 256, 256, 64)
+        I_i = h # input image  h = (None, 256, 256, 64)
+        K = [h] # skip connection  h = (None, 256, 256, 64)
+        for i in range(n_downsamplings):
+            K_i = keras.layers.concatenate([out, I_i]) # [h, h] = (None, 256, 256, 128)
+            out = mru_block(out, I_i, 32 * (2 ** i)) # out = (None, 128, 128, 32)
+            I_i = keras.layers.AveragePooling2D(pool_size=2)(I_i)
+            K.append(K_i)
+            h = out
 
     # 3
+    # h = (None, 64, 64, 256)
     for _ in range(n_blocks):
         h = _residual_block(h)
 
     # 4
-    for _ in range(n_downsamplings):
-        dim //= 2
-        h = keras.layers.Conv2DTranspose(dim, 3, strides=2, padding='same', use_bias=False)(h)
-        h = Norm()(h)
-        h = tf.nn.relu(h)
+    if not use_mru:
+        for _ in range(n_downsamplings):
+            dim //= 2
+            h = keras.layers.Conv2DTranspose(dim, 3, strides=2, padding='same', use_bias=False)(h)
+            h = Norm()(h)
+            h = tf.nn.relu(h)
+    else:
+        for i in range(n_downsamplings):
+            h = mru_block(h, K[n_downsamplings - i], 128 / (2 ** i) if i < n_downsamplings - 1 else 3, deconv=True)
 
     # 5
     h = tf.pad(h, [[0, 0], [3, 3], [3, 3], [0, 0]], mode='REFLECT')
@@ -73,9 +94,9 @@ def CycleResnetGenerator(input_shape=(256, 256, 3),
 
 
 def CycleConvDiscriminator(input_shape=(256, 256, 3),
-                      dim=64,
-                      n_downsamplings=3,
-                      norm='instance_norm'):
+                           dim=64,
+                           n_downsamplings=3,
+                           norm='instance_norm'):
     dim_ = dim
     Norm = _get_norm_layer(norm)
 
@@ -122,8 +143,8 @@ class LinearDecay(keras.optimizers.schedules.LearningRateSchedule):
     def __call__(self, step):
         self.current_learning_rate.assign(tf.cond(
             step >= self._step_decay,
-            true_fn=lambda: self._initial_learning_rate * (1 - 1 / (self._steps - self._step_decay) * (step - self._step_decay)),
+            true_fn=lambda: self._initial_learning_rate * (
+                        1 - 1 / (self._steps - self._step_decay) * (step - self._step_decay)),
             false_fn=lambda: self._initial_learning_rate
         ))
         return self.current_learning_rate
-

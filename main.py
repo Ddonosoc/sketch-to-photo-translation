@@ -17,11 +17,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Use Quimera Model")
     parser.add_argument("-mode", type=str, choices=["train", "test"], help="train or test", required=False,
                         default="train")
+    parser.add_argument("-block", type=str, choices=["simple", "mru"], help="simple or mru", required=False,
+                        default="simple")
     parser.add_argument("-network", type=str, choices=["simple", "mru", "scribbler", "cycle"],
-                        help="Use generator and discriminator as example models like simple pix2pix, with mru, with cycle consistency or simple scribbler",
+                        help="Use generator and discriminator as example models like simple pix2pix, "
+                             "with mru, with cycle consistency or simple scribbler",
                         required=False, default="simple")
-
-    parser.add_argument("-runner", type=str, choices=["simple", "cycle"], default="simple", required=False)
 
     parser.add_argument("-checkpoint", type=str, help="Checkpoint folder name", required=False,
                         default="training_checkpoints")
@@ -33,31 +34,32 @@ if __name__ == "__main__":
 
     len_dataset = configs.len_dataset
 
-    if pargs.network != "cycle" and pargs.runner == "cycle":
-        raise NotImplemented
 
     step_trainer = train_step
     losses_param = None
     if pargs.network == "simple":
-        generator = pix2pix_generator(configs)
-        discriminator = pix2pix_discriminator()
+        print("Loading Simple Pix2Pix Network")
+        generator = [pix2pix_generator(configs)]
+        discriminator = [pix2pix_discriminator()]
         generator_optimizer = Pix2PixUtils.generator_optimizer
         discriminator_optimizer = Pix2PixUtils.discriminator_optimizer
 
     elif pargs.network == "scribbler":
+        print("Loading Scribbler Network")
         configs.scribbler = True
-        generator = pix2pix_generator(configs)
-        discriminator = pix2pix_discriminator()
+        generator = [pix2pix_generator(configs)]
+        discriminator = [pix2pix_discriminator()]
         generator_optimizer = Pix2PixUtils.generator_optimizer
         discriminator_optimizer = Pix2PixUtils.discriminator_optimizer
 
     elif pargs.network == "cycle":
-        G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
+        print("Loading Cycle Network")
+        G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=True)
         G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         D_A2B = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         D_B2A = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
-        generator = G_A2B, G_B2A
-        discriminator = D_A2B, D_B2A
+        generator = [G_A2B, G_B2A]
+        discriminator = [D_A2B, D_B2A]
         generator_optimizer, discriminator_optimizer, g_lr_scheduler, d_lr_scheduler = get_optimizers(configs.lr,
                                                                                                       configs.epochs,
                                                                                                       len_dataset,
@@ -94,9 +96,8 @@ if __name__ == "__main__":
 
     checkpoint.restore(tf.train.latest_checkpoint(configs.checkpoint_dir))
 
-    print(len(os.listdir(configs.folder_dataset_train)))
-
-    print(len(os.listdir(configs.folder_dataset_test)))
+    print(f"Length Dataset train: {len(os.listdir(configs.folder_dataset_train))}")
+    print(f"Length Dataset test: {len(os.listdir(configs.folder_dataset_test))}")
 
     AUTOTUNE = tf.data.experimental.AUTOTUNE
     train_dataset = tf.data.Dataset.list_files(configs.folder_dataset_train + '*.png')
@@ -118,6 +119,7 @@ if __name__ == "__main__":
         log_dir + "fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     if pargs.mode == "train":
+        print("Training...")
         fit(train_dataset, test_dataset, steps=80000, checkpoint=checkpoint,
             generator=generator, discriminator=discriminator, config=configs,
             summary_writer=summary_writer, step_trainer=step_trainer, d_optimizer=discriminator_optimizer,
@@ -125,13 +127,13 @@ if __name__ == "__main__":
     else:
         eval_dataset = tf.data.Dataset.list_files(configs.dataset_foldername + '*.png', shuffle=False)
         eval_dataset = eval_dataset.map(load_image_trainv2, num_parallel_calls=AUTOTUNE)
+        print("Evaluating...")
         for images in eval_dataset:
             filename = images[1].numpy().decode().split(configs.symbol_replacement)[-1]
-            print(filename)
             images = tf.expand_dims(images[0], 0)
             # generate_images_v2(generator, images)
             # print(images.shape)
-            prediction = generator(images, training=True)
+            prediction = generator[0](images, training=True)
             # print(images[0].numpy())
             prediction = Image.fromarray(((prediction[0].numpy() * 0.5 + 0.5) * 255).astype('uint8'), 'RGB')
             # prediction = Image.fromarray((images[0].numpy()).astype('uint8'), 'RGB') # Forma color invertido

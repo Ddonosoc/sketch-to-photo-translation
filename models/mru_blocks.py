@@ -1,6 +1,6 @@
 """Implementation of Masked Residual Units (SketchyGAN)"""
 import tensorflow as tf
-
+import tensorflow.keras as keras
 
 def mru_block(feature_maps, input_image, filter_depth, deconv=False):
     """
@@ -33,6 +33,8 @@ def mru_block(feature_maps, input_image, filter_depth, deconv=False):
 
     conv_func_one = tf.keras.layers.Conv2D(filters=filter_depth, kernel_size=(3, 3), padding="same", activation="relu")(
         merge_two)
+    print("CONV_FUNC_ONE")
+    print(conv_func_one.shape)
 
     mul_higher = tf.keras.layers.multiply([conv_sig_n, conv_func_one])
 
@@ -50,3 +52,61 @@ def mru_block(feature_maps, input_image, filter_depth, deconv=False):
     # Extra
     sum_final = tf.keras.layers.Activation("relu")(sum_final)
     return sum_final
+
+
+def get_encoder(I):
+    K1 = keras.layers.concatenate([I, I])
+    new = mru_block(I, I, 32)
+    I2 = keras.layers.AveragePooling2D(pool_size=2)(I)
+
+    K2 = keras.layers.concatenate([new, I2])
+    new = mru_block(new, I2, 64)
+    I3 = keras.layers.AveragePooling2D(pool_size=2)(I2)
+
+    K3 = keras.layers.concatenate([new, I3])
+    new = mru_block(new, I3, 128)
+    I4 = keras.layers.AveragePooling2D(pool_size=2)(I3)
+
+    K4 = keras.layers.concatenate([new, I4])
+    out = mru_block(new, I4, 256)
+    # I5 = keras.layers.AveragePooling2D(pool_size=2)(I4)
+    #
+    # K5 = keras.layers.concatenate([out, I5])
+
+    encoder = keras.Model(I, out, name='encoder')
+
+    return encoder, K4, K3, K2, K1
+
+
+def get_decoder(feature_map, K4, K3, K2, K1, I):
+    decoder_in = keras.layers.Input(shape=(int(feature_map.shape[1]), int(feature_map.shape[2]), int(feature_map.shape[3])))
+
+    new = mru_block(decoder_in, K4, 128, deconv=True)
+    new = mru_block(new, K3, 64, deconv=True)
+    new = mru_block(new, K2, 32, deconv=True)
+    out = mru_block(new, K1, 3, deconv=True)
+
+    decoder = keras.Model([decoder_in, I], out, name='decoder')
+
+    return decoder
+
+
+def get_generator(img_shape):
+    I = keras.layers.Input(shape=img_shape)
+
+    encoder, K4, K3, K2, K1 = get_encoder(I)
+
+    decoder = get_decoder(encoder.output, K4, K3, K2, K1, I)
+
+    encoded = encoder(I)
+
+    out = decoder([encoded, I])
+
+    return keras.Model([I], out, name='generator_model')
+
+
+def get_discriminator(img_shape):
+    I = keras.layers.Input(shape=img_shape)
+    out = mru_block(I, I, 8)
+
+    return keras.Model(I, out, name='discriminator_skeleton')
