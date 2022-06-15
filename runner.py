@@ -49,9 +49,13 @@ def train_G(A, B, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, 
         B2A2B = G_A2B(B2A, training=True)
         A2A = G_B2A(A, training=True)
         B2B = G_A2B(B, training=True)
-
-        A2B_d_logits = D_B(A2B, training=True)
-        B2A_d_logits = D_A(B2A, training=True)
+        pixpix = config.pix2pix
+        if pixpix:
+            A2B_d_logits = D_B([A2B, B], training=True)
+            B2A_d_logits = D_A([B2A, A], training=True)
+        else:
+            A2B_d_logits = D_B(A2B, training=True)
+            B2A_d_logits = D_A(B2A, training=True)
 
         A2B_g_loss = g_loss_fn(A2B_d_logits)
         B2A_g_loss = g_loss_fn(B2A_d_logits)
@@ -79,10 +83,16 @@ def train_G(A, B, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, 
 def train_D(A, B, A2B, B2A, discriminator_data, d_loss_fn, config, d_optimizer):
     D_A, D_B = discriminator_data
     with tf.GradientTape() as t:
-        A_d_logits = D_A(A, training=True)
-        B2A_d_logits = D_A(B2A, training=True)
-        B_d_logits = D_B(B, training=True)
-        A2B_d_logits = D_B(A2B, training=True)
+        if config.pix2pix:
+            A_d_logits = D_A([A, A], training=True)
+            B2A_d_logits = D_A([B2A, A], training=True)
+            B_d_logits = D_B([B, B], training=True)
+            A2B_d_logits = D_B([A2B, B], training=True)
+        else:
+            A_d_logits = D_A(A, training=True)
+            B2A_d_logits = D_A(B2A, training=True)
+            B_d_logits = D_B(B, training=True)
+            A2B_d_logits = D_B(A2B, training=True)
 
         A_d_loss, B2A_d_loss = d_loss_fn(A_d_logits, B2A_d_logits)
         B_d_loss, A2B_d_loss = d_loss_fn(B_d_logits, A2B_d_logits)
