@@ -22,7 +22,9 @@ def generator_loss(disc_generated_output, gen_output, target, config):
         feature_loss = tf.norm(Pix2PixUtils.feature_model(gen_im) - Pix2PixUtils.feature_model(tar_im))
         total_gen_loss += config.TV_WEIGHT * tv_loss
         total_gen_loss += config.F_WEIGHT * feature_loss
-        return [total_gen_loss, gan_loss, l1_loss, tv_loss, feature_loss], ["gen_total_loss", "gan_loss", "l1_loss", "tv_loss", "feature_loss"]
+        return [total_gen_loss, gan_loss, l1_loss, tv_loss], ["gen_total_loss", "gan_loss", "l1_loss",
+                                                                            "tv_loss"]
+        # return [total_gen_loss, gan_loss, l1_loss, tv_loss, feature_loss], ["gen_total_loss", "gan_loss", "l1_loss", "tv_loss", "feature_loss"]
 
     return [total_gen_loss, gan_loss, l1_loss], ["gen_total_loss", "gan_loss", "l1_loss"]
 

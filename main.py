@@ -15,7 +15,7 @@ from PIL import Image
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Use Quimera Model")
-    parser.add_argument("-mode", type=str, choices=["train", "test"], help="train or test", required=False,
+    parser.add_argument("-mode", type=str, choices=["train", "test", "eval"], help="train or test", required=False,
                         default="train")
     parser.add_argument("-block", type=str, choices=["simple", "mru"], help="simple or mru", required=False,
                         default="simple")
@@ -57,8 +57,8 @@ if __name__ == "__main__":
         G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
         G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
         # configs.pix2pix = True
-        # G_A2B = pix2pix_generator(configs)
-        # G_B2A = pix2pix_generator(configs)
+        #G_A2B = pix2pix_generator(configs)
+        #G_B2A = pix2pix_generator(configs)
         D_A2B = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         D_B2A = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         # D_A2B = pix2pix_discriminator()
@@ -103,6 +103,7 @@ if __name__ == "__main__":
 
     print(f"Length Dataset train: {len(os.listdir(configs.folder_dataset_train))}")
     print(f"Length Dataset test: {len(os.listdir(configs.folder_dataset_test))}")
+    print(f"Length Dataset Eval: {len(os.listdir(configs.dataset_foldername))}")
 
     AUTOTUNE = tf.data.experimental.AUTOTUNE
     train_dataset = tf.data.Dataset.list_files(configs.folder_dataset_train + '*.png')
@@ -145,7 +146,7 @@ if __name__ == "__main__":
             generator=generator, discriminator=discriminator, config=configs,
             summary_writer=summary_writer, step_trainer=step_trainer, d_optimizer=discriminator_optimizer,
             loss_param=losses_param)
-    else:
+    elif pargs.mode == "test":
         eval_dataset = tf.data.Dataset.list_files(configs.dataset_foldername + '*.png', shuffle=False)
         eval_dataset = eval_dataset.map(load_image_trainv2, num_parallel_calls=AUTOTUNE)
         print("Evaluating...")
