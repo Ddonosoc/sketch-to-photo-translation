@@ -11,7 +11,7 @@ def mlp(inputs, in_features, hidden_features=None, out_features=None, drop=0.):
     drop = keras.layers.Dropout(drop)
     x = inputs
     x = fc1(x)
-    x = tf.keras.activations.gelu(x)
+    x = keras.activations.relu(x)
     x = drop(x)
     x = fc2(x)
     x = drop(x)
@@ -45,6 +45,8 @@ def window_attention(inputs, dim, num_heads, window_size, attn_drop_val=0., proj
     attn_drop = keras.layers.Dropout(attn_drop_val)
     proj = keras.layers.Dense(dim)
     proj_drop = keras.layers.Dropout(proj_drop_val)
+    qkv_x = QKV(x)
+
     qkv = tf.transpose(tf.reshape(QKV(x), shape=[-1, N, 3, num_heads, C // num_heads]), perm=[2, 0, 3, 1, 4])
     q, k, v = qkv[0], qkv[1], qkv[2]
 
@@ -228,4 +230,25 @@ def patch_embed(inputs, img_size=(224, 224), patch_size=(4, 4), in_chans=3, embe
     if norm_layer:
         norm = norm_layer(epsilon=1e-5)
         x = norm(x)
+    return x
+
+
+def patch_merging(inputs, input_resolution, dim, norm_layer=keras.layers.LayerNormalization):
+    x = inputs
+    H, W = input_resolution
+    B, L, C = x.get_shape().as_list()
+    assert L == H * W, "input feature has wrong size"
+    assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
+    x = tf.reshape(x, shape=[-1, H, W, C])
+    x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
+    x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
+    x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
+    x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
+    x = tf.concat([x0, x1, x2, x3], axis=-1)
+    x = tf.reshape(x, shape=[-1, (H // 2) * (W // 2), 4 * C])
+    reduction = keras.layers.Dense(2 * dim, use_bias=False)
+    norm = norm_layer(epsilon=1e-5)
+    x = norm(x)
+    x = reduction(x)
+
     return x

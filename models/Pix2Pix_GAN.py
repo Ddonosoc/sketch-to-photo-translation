@@ -1,5 +1,6 @@
 """Implementation of Pix2Pix Neural Network"""
 import tensorflow as tf
+import models.SwinTransformerBlock as SwinTransformerBlock
 
 
 def downsample(filters, size, apply_batchnorm=True):
@@ -46,9 +47,36 @@ def upsample(filters, size, apply_dropout=False):
 
 def pix2pix_generator(config):
     inputs = tf.keras.layers.Input(shape=[256, 256, 3])
+    x = inputs
+    skips = []
+    if config.transformer:
+        x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
+        embed_dim = 48
+        img_size = (256, 256)
+        patch_size = (2, 2)
+        mlp_ratio = 4
+        qkv_bias = True
+        qk_scale = None
+        drop_rate = 0
+        attn_drop_rate = 0
+        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
+        x = SwinTransformerBlock.basic_layer(x, dim=int(embed_dim * 2),
+                        input_resolution=(patches_resolution[0] // 2, patches_resolution[1] // 2),
+                        depth=1, num_heads=3, window_size=7,
+                        mlp_ratio=mlp_ratio,
+                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+                        drop=drop_rate, attn_drop=attn_drop_rate,
+                        drop_path_prob=0,
+                        norm_layer=tf.keras.layers.LayerNormalization,
+                        downsample=None)
+        x = tf.reshape(x, (-1, 64, 64, 96))
+        x = upsample(64, 4)(x)  # (batch_size, 128, 128, 64)
+        skips.append(x)
+        down_stack = []
+    else:
+        down_stack = [downsample(64, 4, apply_batchnorm=False)]  # (batch_size, 128, 128, 64)
 
-    down_stack = [
-        downsample(64, 4, apply_batchnorm=False),  # (batch_size, 128, 128, 64)
+    down_stack = down_stack + [
         downsample(128, 4),  # (batch_size, 64, 64, 128)
         downsample(256, 4),  # (batch_size, 32, 32, 256)
         downsample(512, 4),  # (batch_size, 16, 16, 512)
@@ -75,10 +103,8 @@ def pix2pix_generator(config):
                                            kernel_initializer=initializer,
                                            activation='tanh')  # (batch_size, 256, 256, 3)
 
-    x = inputs
-
     # Downsampling through the model
-    skips = []
+
     for down in down_stack:
         x = down(x)
         skips.append(x)

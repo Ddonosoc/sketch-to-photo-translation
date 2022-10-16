@@ -25,6 +25,7 @@ class Config:
         self.checkpoint_dir = self.folder + checkpoint_name
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
         self.pix2pix = None
+        self.transformer = False
         # self.scribbler = False
         # self.folder = '/users/ddonoso/Models/Quimera/'
         # self.dataset_name = "shoes"

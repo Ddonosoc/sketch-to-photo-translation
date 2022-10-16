@@ -54,12 +54,17 @@ if __name__ == "__main__":
 
     elif pargs.network == "cycle":
         print("Loading Cycle Network")
-        G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        # configs.pix2pix = True
-        #G_A2B = pix2pix_generator(configs)
-        #G_B2A = pix2pix_generator(configs)
+        # G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
+        # G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
+        configs.pix2pix = True
+        configs.transformer = True
+        G_A2B = pix2pix_generator(configs)
+        G_B2A = pix2pix_generator(configs)
         D_A2B = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
+        print("GENERATOR")
+        print("============================")
+        print(G_A2B.summary())
+        print("============================")
         D_B2A = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         # D_A2B = pix2pix_discriminator()
         # D_B2A = pix2pix_discriminator()
