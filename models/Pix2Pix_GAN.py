@@ -50,6 +50,7 @@ def pix2pix_generator(config):
     x = inputs
     skips = []
     if config.transformer:
+        print("Mode Transformer")
         x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
         embed_dim = 48
         img_size = (256, 256)
@@ -61,16 +62,20 @@ def pix2pix_generator(config):
         attn_drop_rate = 0
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
         x = SwinTransformerBlock.basic_layer(x, dim=int(embed_dim * 2),
-                        input_resolution=(patches_resolution[0] // 2, patches_resolution[1] // 2),
-                        depth=1, num_heads=3, window_size=7,
-                        mlp_ratio=mlp_ratio,
-                        qkv_bias=qkv_bias, qk_scale=qk_scale,
-                        drop=drop_rate, attn_drop=attn_drop_rate,
-                        drop_path_prob=0,
-                        norm_layer=tf.keras.layers.LayerNormalization,
-                        downsample=None)
+                                             input_resolution=(patches_resolution[0] // 2, patches_resolution[1] // 2),
+                                             depth=1, num_heads=3, window_size=8,
+                                             mlp_ratio=mlp_ratio,
+                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                             drop=drop_rate, attn_drop=attn_drop_rate,
+                                             drop_path_prob=0,
+                                             norm_layer=tf.keras.layers.LayerNormalization,
+                                             downsample=None)
+        # {{node model_1/tf_op_layer_Reshape_2/Reshape_2}} = Reshape[T=DT_FLOAT, Tshape=DT_INT32, _cloned=true](model_1/tf_op_layer_Reshape_1/Reshape_1, model_1/tf_op_layer_Reshape_2/Reshape_2/shape)
+        # [1,64,64,96], [6] and with input tensors computed as partial shapes: input[1] = [?,9,7,9,7,96]
         x = tf.reshape(x, (-1, 64, 64, 96))
         x = upsample(64, 4)(x)  # (batch_size, 128, 128, 64)
+        print(x.get_shape().as_list())
+
         skips.append(x)
         down_stack = []
     else:
@@ -148,6 +153,5 @@ def pix2pix_discriminator():
                                   kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
 
     return tf.keras.Model(inputs=[inp, tar], outputs=last)
-
 
 

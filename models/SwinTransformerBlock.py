@@ -119,7 +119,7 @@ def drop_path(x, drop_prob=None, training=None):
 
 
 def swin_transformer_block(inputs, dim, input_resolution, num_heads, window_size=7, shift_size=0, mlp_ratio=4.,
-                           qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path_prob=0.,
+                           qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path_prob=0., out_f=None,
                            norm_layer=tf.keras.layers.LayerNormalization):
     if min(input_resolution) <= window_size:
         shift_size = 0
@@ -128,6 +128,8 @@ def swin_transformer_block(inputs, dim, input_resolution, num_heads, window_size
 
     H, W = input_resolution
     B, L, C = inputs.get_shape().as_list()
+    print(H, W, B, L, C)
+
     assert L == H * W, "input feature has wrong size"
 
     x = inputs
@@ -196,14 +198,14 @@ def swin_transformer_block(inputs, dim, input_resolution, num_heads, window_size
     x = shortcut + drop_path(x)
     norm2 = norm_layer(epsilon=1e-5)
     mlp_hidden_dim = int(dim * mlp_ratio)
-    mlp_layer = mlp(inputs=norm2(x), in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
+    mlp_layer = mlp(inputs=norm2(x), in_features=dim, hidden_features=mlp_hidden_dim, drop=drop, out_features=out_f)
     drop_path_layer = drop_path(mlp_layer, drop_path_prob if drop_path_prob > 0. else 0.)
     x = x + drop_path_layer
     return x
 
 
 def basic_layer(inputs, dim, input_resolution, depth, num_heads, window_size, mlp_ratio=4., qkv_bias=True,
-                qk_scale=None,
+                qk_scale=None,p_m_merging=None,
                 drop=0., attn_drop=0., drop_path_prob=0., norm_layer=keras.layers.LayerNormalization, downsample=None,
                 use_checkpoint=False):
     x = inputs
@@ -213,7 +215,7 @@ def basic_layer(inputs, dim, input_resolution, depth, num_heads, window_size, ml
                                    mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop,
                                    attn_drop=attn_drop, drop_path_prob=drop_path_prob, norm_layer=norm_layer)
     if downsample:
-        x = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+        x = downsample(x, input_resolution, dim=p_m_merging if p_m_merging else dim, norm_layer=norm_layer)
     return x
 
 
