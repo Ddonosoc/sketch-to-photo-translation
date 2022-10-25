@@ -1,4 +1,6 @@
 """Implementation of Pix2Pix Neural Network"""
+import math
+
 import tensorflow as tf
 import models.SwinTransformerBlock as SwinTransformerBlock
 
@@ -51,45 +53,56 @@ def pix2pix_generator(config):
     skips = []
     if config.transformer:
         print("Mode Transformer")
-        x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
-        embed_dim = 48
-        img_size = (256, 256)
-        patch_size = (2, 2)
+        x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256), patch_size=(2, 2), embed_dim=64)
         mlp_ratio = 4
         qkv_bias = True
         qk_scale = None
         drop_rate = 0
         attn_drop_rate = 0
-        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
-        x = SwinTransformerBlock.basic_layer(x, dim=int(embed_dim * 2),
-                                             input_resolution=(patches_resolution[0] // 2, patches_resolution[1] // 2),
-                                             depth=1, num_heads=3, window_size=8,
-                                             mlp_ratio=mlp_ratio,
-                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                             drop=drop_rate, attn_drop=attn_drop_rate,
-                                             drop_path_prob=0,
-                                             norm_layer=tf.keras.layers.LayerNormalization,
-                                             downsample=None)
-        # {{node model_1/tf_op_layer_Reshape_2/Reshape_2}} = Reshape[T=DT_FLOAT, Tshape=DT_INT32, _cloned=true](model_1/tf_op_layer_Reshape_1/Reshape_1, model_1/tf_op_layer_Reshape_2/Reshape_2/shape)
-        # [1,64,64,96], [6] and with input tensors computed as partial shapes: input[1] = [?,9,7,9,7,96]
-        x = tf.reshape(x, (-1, 64, 64, 96))
-        x = upsample(64, 4)(x)  # (batch_size, 128, 128, 64)
+        embed_dims = [64, 128, 256, 512, 512, 512, 512]
+        num_heads = [max(c // 32, 4) for c in embed_dims]
+        windows_size = [4, 8, 8, 8, 8, 8, 8]
+        input_resolutions = [(128, 128), (64, 64), (32, 32), (16, 16), (8, 8), (4, 4), (2, 2)]
+        pm_mergings = [None, None, None, 256, 256, 256, 256]
+        for l in range(len(embed_dims)):
+            print(l, len(embed_dims))
+            x, down = SwinTransformerBlock.basic_layer(x, dim=embed_dims[l],
+                                                       input_resolution=input_resolutions[l],
+                                                       depth=2, num_heads=num_heads[l], window_size=windows_size[l],
+                                                       mlp_ratio=mlp_ratio,
+                                                       p_m_merging=pm_mergings[l],
+                                                       qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                       drop=drop_rate, attn_drop=attn_drop_rate,
+                                                       drop_path_prob=0,
+                                                       norm_layer=tf.keras.layers.LayerNormalization,
+                                                       downsample=SwinTransformerBlock.patch_merging if l < len(
+                                                           embed_dims) - 1 else None)
+
+            b, l, c = x.get_shape().as_list()
+            print(b, l, c)
+            skips.append(tf.reshape(x, (-1, int(math.sqrt(l)), int(math.sqrt(l)), c)))
+            x = down if down is not None else x
+        # x = upsample(64, 4)(x)  # (batch_size, 128, 128, 64)
+        x = tf.reshape(x, (-1, 2, 2, 512))
+        x = downsample(512, 4)(x)  # (batch_size, 1, 1, 512){{node model_1/tf_op_layer_Reshape_5/Reshape_5}}
+        skips.append(x)
         print(x.get_shape().as_list())
 
-        skips.append(x)
-        down_stack = []
     else:
         down_stack = [downsample(64, 4, apply_batchnorm=False)]  # (batch_size, 128, 128, 64)
 
-    down_stack = down_stack + [
-        downsample(128, 4),  # (batch_size, 64, 64, 128)
-        downsample(256, 4),  # (batch_size, 32, 32, 256)
-        downsample(512, 4),  # (batch_size, 16, 16, 512)
-        downsample(512, 4),  # (batch_size, 8, 8, 512)
-        downsample(512, 4),  # (batch_size, 4, 4, 512)
-        downsample(512, 4),  # (batch_size, 2, 2, 512)
-        downsample(512, 4),  # (batch_size, 1, 1, 512)
-    ]
+        down_stack = down_stack + [
+            downsample(128, 4),  # (batch_size, 64, 64, 128)
+            downsample(256, 4),  # (batch_size, 32, 32, 256)
+            downsample(512, 4),  # (batch_size, 16, 16, 512)
+            downsample(512, 4),  # (batch_size, 8, 8, 512)
+            downsample(512, 4),  # (batch_size, 4, 4, 512)
+            downsample(512, 4),  # (batch_size, 2, 2, 512)
+            downsample(512, 4),  # (batch_size, 1, 1, 512)
+        ]
+        for down in down_stack:
+            x = down(x)
+            skips.append(x)
 
     up_stack = [
         upsample(512, 4, apply_dropout=True),  # (batch_size, 2, 2, 1024)
@@ -110,9 +123,7 @@ def pix2pix_generator(config):
 
     # Downsampling through the model
 
-    for down in down_stack:
-        x = down(x)
-        skips.append(x)
+
 
     skips = reversed(skips[:-1])
 
@@ -153,5 +164,3 @@ def pix2pix_discriminator():
                                   kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
 
     return tf.keras.Model(inputs=[inp, tar], outputs=last)
-
-

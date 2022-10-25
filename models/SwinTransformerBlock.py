@@ -149,6 +149,7 @@ def swin_transformer_block(inputs, dim, input_resolution, num_heads, window_size
     # partition windows
     x_windows = window_partition(shifted_x, window_size)
     x_windows = tf.reshape(x_windows, shape=[-1, window_size * window_size, C])
+    #{{node model_1/tf_op_layer_Reshape_5/Reshape_5}} = Reshape[T=DT_FLOAT, Tshape=DT_INT32, _cloned=true](model_1/dense/BiasAdd, model_1/tf_op_layer_Reshape_5/Reshape_5/shape)
 
     if shift_size > 0:
         H, W = input_resolution
@@ -215,8 +216,8 @@ def basic_layer(inputs, dim, input_resolution, depth, num_heads, window_size, ml
                                    mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop,
                                    attn_drop=attn_drop, drop_path_prob=drop_path_prob, norm_layer=norm_layer)
     if downsample:
-        x = downsample(x, input_resolution, dim=p_m_merging if p_m_merging else dim, norm_layer=norm_layer)
-    return x
+        return x, downsample(x, input_resolution, dim=p_m_merging if p_m_merging else dim, norm_layer=norm_layer)
+    return x, downsample
 
 
 def patch_embed(inputs, img_size=(224, 224), patch_size=(4, 4), in_chans=3, embed_dim=96, norm_layer=None):
