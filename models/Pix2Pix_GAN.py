@@ -70,8 +70,6 @@ def pix2pix_generator(config):
         upsample(128, 4),  # (batch_size, 64, 64, 256)
         upsample(64, 4),  # (batch_size, 128, 128, 128)
     ]
-    if config.transformer:
-        up_stack.pop()
 
     initializer = tf.random_normal_initializer(0., 0.02)
     last = tf.keras.layers.Conv2DTranspose(config.OUTPUT_CHANNELS, 4,
@@ -81,6 +79,7 @@ def pix2pix_generator(config):
                                            activation='tanh')  # (batch_size, 256, 256, 3)
 
     x = inputs
+    down_stack.pop()
 
     # Downsampling through the model
     skips = []
@@ -88,37 +87,43 @@ def pix2pix_generator(config):
         x = down(x)
         skips.append(x)
 
-    skips = list(reversed(skips[:-1]))
-
-    # Upsampling and establishing the skip connections
-    for up, skip in zip(up_stack, skips[:-1]):
-        x = up(x)
-        x = tf.keras.layers.Concatenate()([x, skip])
-
-    print(x.get_shape().as_list())
-    x = SwinTransformerBlock.patch_embed(x, img_size=(64, 64), patch_size=(2, 2))
+    skips = list(reversed(skips))
+    input_resolutions = [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
+    windows_size = [2, 4, 8, 8, 8, 8]
+    embed_dims = [512, 512, 512, 512, 256, 128]
+    num_heads = [max(c // 32, 4) for c in embed_dims]
     mlp_ratio = 4
     qkv_bias = True
     qk_scale = None
     drop_rate = 0
     attn_drop_rate = 0
-    x, down = SwinTransformerBlock.basic_layer(x, dim=96,
-                                             input_resolution=(32, 32),
-                                             depth=2, num_heads=3, window_size=4,
-                                             mlp_ratio=mlp_ratio,
-                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                             drop=drop_rate, attn_drop=attn_drop_rate,
-                                             drop_path_prob=0,
-                                             norm_layer=tf.keras.layers.LayerNormalization,
-                                             downsample=None)
-    x = tf.reshape(x, (-1, 32, 32, 96))
-    x = upsample(64, 4)(x)
-    x = upsample(64, 4)(x)
-    x = tf.keras.layers.Concatenate()([x, skips[-1]])
-    print(x.get_shape().as_list())
+    # Upsampling and establishing the skip connections
+    for l in range(len(embed_dims)):
+        print("===============")
+        print(l)
+        skip = skips[l] if l < len(skips) else None
+        up = up_stack[l]
+        x = tf.keras.layers.Conv2D(embed_dims[l], (1, 1), name=f"gato_trans{l}")(x)
+        shape_x = x.get_shape().as_list()
+        print(shape_x, skip.get_shape().as_list())
+        x = tf.reshape(x, (-1, shape_x[1] * shape_x[2], shape_x[3]))
+        shape_skip = skip.get_shape().as_list()
+        y = tf.reshape(skip, (-1, shape_skip[1] * shape_skip[2], shape_skip[3]))
+        x, down = SwinTransformerBlock.basic_layer(x, y, dim=embed_dims[l],
+                                                   input_resolution=input_resolutions[l],
+                                                   depth=2, num_heads=num_heads[l], window_size=windows_size[l],
+                                                   mlp_ratio=mlp_ratio,
+                                                   p_m_merging=None,
+                                                   qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                   drop=drop_rate, attn_drop=attn_drop_rate,
+                                                   drop_path_prob=0,
+                                                   norm_layer=tf.keras.layers.LayerNormalization,
+                                                   downsample=None)
+        x = tf.reshape(x, (-1, shape_x[1], shape_x[2], shape_x[3]))
+        x = up(x)
 
     x = last(x)
-
+    print(x.get_shape().as_list())
     return tf.keras.Model(inputs=inputs, outputs=x)
 
 
