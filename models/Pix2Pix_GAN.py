@@ -79,48 +79,31 @@ def pix2pix_generator(config):
                                            activation='tanh')  # (batch_size, 256, 256, 3)
 
     x = inputs
-    down_stack.pop()
 
     # Downsampling through the model
     skips = []
+    i = 0
     for down in down_stack:
-        x = down(x)
+        if i == 0:
+            x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
+            embed_dim = 48
+            print(x.get_shape().as_list())
+            x = SwinTransformerBlock.transformer(2, embed_dim * 2,max(embed_dim // 32, 4), x, 0.1)
+            print(x.get_shape().as_list())
+            x = tf.reshape(x, (-1, 64, 64, 96))
+            x = upsample(64, 4)(x)
+            i += 1
+        else:
+            x = down(x)
+
         skips.append(x)
 
-    skips = list(reversed(skips))
-    input_resolutions = [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
-    windows_size = [2, 4, 8, 8, 8, 8]
-    embed_dims = [512, 512, 512, 512, 256, 128]
-    num_heads = [max(c // 32, 4) for c in embed_dims]
-    mlp_ratio = 4
-    qkv_bias = True
-    qk_scale = None
-    drop_rate = 0
-    attn_drop_rate = 0
+    skips = reversed(skips[:-1])
+
     # Upsampling and establishing the skip connections
-    for l in range(len(embed_dims)):
-        print("===============")
-        print(l)
-        skip = skips[l] if l < len(skips) else None
-        up = up_stack[l]
-        x = tf.keras.layers.Conv2D(embed_dims[l], (1, 1), name=f"gato_trans{l}")(x)
-        shape_x = x.get_shape().as_list()
-        print(shape_x, skip.get_shape().as_list())
-        x = tf.reshape(x, (-1, shape_x[1] * shape_x[2], shape_x[3]))
-        shape_skip = skip.get_shape().as_list()
-        y = tf.reshape(skip, (-1, shape_skip[1] * shape_skip[2], shape_skip[3]))
-        x, down = SwinTransformerBlock.basic_layer(x, y, dim=embed_dims[l],
-                                                   input_resolution=input_resolutions[l],
-                                                   depth=2, num_heads=num_heads[l], window_size=windows_size[l],
-                                                   mlp_ratio=mlp_ratio,
-                                                   p_m_merging=None,
-                                                   qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                                   drop=drop_rate, attn_drop=attn_drop_rate,
-                                                   drop_path_prob=0,
-                                                   norm_layer=tf.keras.layers.LayerNormalization,
-                                                   downsample=None)
-        x = tf.reshape(x, (-1, shape_x[1], shape_x[2], shape_x[3]))
+    for up, skip in zip(up_stack, skips):
         x = up(x)
+        x = tf.keras.layers.Concatenate()([x, skip])
 
     x = last(x)
     print(x.get_shape().as_list())

@@ -99,6 +99,17 @@ def load_image_test(image_file):
 
     return input_image, real_image
 
+def load_image_testv2(image_file):
+    """
+    Load test Dataset image. The Function doesn't apply transformation as random jitter, because those kind of
+    transformation are applied during training phase
+    """
+    input_image, real_image = load(image_file)
+    input_image, real_image = resize(input_image, real_image, IMG_HEIGHT, IMG_WIDTH)
+    input_image, real_image = normalize(input_image, real_image)
+
+    return input_image, image_file
+
 
 def loadv2(image_file):
     """

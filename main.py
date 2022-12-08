@@ -8,7 +8,7 @@ from models.Pix2Pix_GAN import pix2pix_generator, pix2pix_discriminator
 from models.Cycle_GAN import CycleResnetGenerator, CycleConvDiscriminator
 from models.CycleUtils import get_optimizers
 from models import Pix2PixUtils
-from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2
+from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2, load_image_testv2
 from config.configs import Config
 from runner import fit, cycle_step, train_step
 from PIL import Image
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         print("Loading Cycle Network")
         # G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
         # G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        configs.pix2pix = True
+        configs.pix2pix = False
         configs.transformer = True
         G_A2B = pix2pix_generator(configs)
         G_B2A = pix2pix_generator(configs)
@@ -107,6 +107,10 @@ if __name__ == "__main__":
 
     checkpoint.restore(tf.train.latest_checkpoint(configs.checkpoint_dir))
 
+    if tf.test.gpu_device_name():
+        print('Default GPU Device:{}'.format(tf.test.gpu_device_name()))
+    else:
+        print("Please install GPU version of TF")
     print(f"Length Dataset train: {len(os.listdir(configs.folder_dataset_train))}")
     print(f"Length Dataset test: {len(os.listdir(configs.folder_dataset_test))}")
     print(f"Length Dataset Eval: {len(os.listdir(configs.dataset_foldername))}")

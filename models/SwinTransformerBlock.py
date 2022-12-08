@@ -1,17 +1,18 @@
 import tensorflow as tf
-import tensorflow.keras as keras
 import numpy as np
+from models.multihead import MultiHeadAttention
+from tensorflow import math, matmul, reshape, shape, transpose, cast, float32
 
 
 def mlp(inputs, in_features, hidden_features=None, out_features=None, drop=0.):
     out_f = out_features or in_features
     hidden_f = hidden_features or in_features
-    fc1 = keras.layers.Dense(hidden_f)
-    fc2 = keras.layers.Dense(out_f)
-    drop = keras.layers.Dropout(drop)
+    fc1 = tf.keras.layers.Dense(hidden_f)
+    fc2 = tf.keras.layers.Dense(out_f)
+    drop = tf.keras.layers.Dropout(drop)
     x = inputs
     x = fc1(x)
-    x = keras.activations.relu(x)
+    x = tf.keras.activations.relu(x)
     x = drop(x)
     x = fc2(x)
     x = drop(x)
@@ -39,12 +40,12 @@ def window_attention(inputs, dim, num_heads, window_size, attn_drop_val=0., proj
                      qk_scale=None):
     x = inputs
     B_, N, C = x.get_shape().as_list()
-    QKV = keras.layers.Dense(dim * 3, use_bias=qkv_bias)
+    QKV = tf.keras.layers.Dense(dim * 3, use_bias=qkv_bias)
     head_dim = dim // num_heads
     scale = qk_scale or head_dim ** -0.5
-    attn_drop = keras.layers.Dropout(attn_drop_val)
-    proj = keras.layers.Dense(dim)
-    proj_drop = keras.layers.Dropout(proj_drop_val)
+    attn_drop = tf.keras.layers.Dropout(attn_drop_val)
+    proj = tf.keras.layers.Dense(dim)
+    proj_drop = tf.keras.layers.Dropout(proj_drop_val)
     qkv_x = QKV(x)
 
     qkv = tf.transpose(tf.reshape(QKV(x), shape=[-1, N, 3, num_heads, C // num_heads]), perm=[2, 0, 3, 1, 4])
@@ -103,13 +104,13 @@ def window_cross_attention(input_x, input_y, dim, num_heads, window_size, attn_d
     y = input_y
     Bx_, Nx, Cx = x.get_shape().as_list()
     By_, Ny, Cy = y.get_shape().as_list()
-    Q = keras.layers.Dense(dim * 1, use_bias=qkv_bias)
-    KV = keras.layers.Dense(dim * 2, use_bias=qkv_bias)
+    Q = tf.keras.layers.Dense(dim * 1, use_bias=qkv_bias)
+    KV = tf.keras.layers.Dense(dim * 2, use_bias=qkv_bias)
     head_dim = dim // num_heads
     scale = qk_scale or head_dim ** -0.5
-    attn_drop = keras.layers.Dropout(attn_drop_val)
-    proj = keras.layers.Dense(dim)
-    proj_drop = keras.layers.Dropout(proj_drop_val)
+    attn_drop = tf.keras.layers.Dropout(attn_drop_val)
+    proj = tf.keras.layers.Dense(dim)
+    proj_drop = tf.keras.layers.Dropout(proj_drop_val)
 
     qkv_x = tf.transpose(tf.reshape(Q(x), shape=[-1, Nx, 1, num_heads, Cx // num_heads]), perm=[2, 0, 3, 1, 4])
     qkv_y = tf.transpose(tf.reshape(KV(y), shape=[-1, Ny, 2, num_heads, Cy // num_heads]), perm=[2, 0, 3, 1, 4])
@@ -185,6 +186,28 @@ def drop_path_func(inputs, drop_prob, is_training):
 def drop_path(x, drop_prob=None, training=None):
     return drop_path_func(x, drop_prob, training)
 
+
+def transformer_block(num_heads, mlp_dim, inputs):
+    x = tf.keras.layers.LayerNormalization(dtype=inputs.dtype)(inputs)
+    # x = MultiHeadAttention(num_heads=num_heads, key_dim=inputs.shape[-1], dropout=0.1)(x, x)
+
+    x = MultiHeadAttention(h=num_heads, d_k=inputs.shape[-1], d_v=inputs.shape[-1], d_model=inputs.shape[-1])(x, x, x)
+    x = tf.keras.layers.add([x, inputs])
+
+    y = tf.keras.layers.LayerNormalization(dtype=x.dtype)(x)
+    y = mlp(y, mlp_dim, drop=0.1)
+    print(y.get_shape().as_list())
+    y_1 = tf.keras.layers.add([y, x])
+    return y_1
+
+
+def transformer(num_layers, mlp_dim, num_heads, inputs, drop):
+    x = tf.keras.layers.Dropout(drop)(inputs)
+    for _ in range(num_layers):
+        x = transformer_block(num_heads, mlp_dim, x)
+
+    encoded = tf.keras.layers.LayerNormalization()(x)
+    return encoded
 
 def swin_transformer_block(inputs, dim, input_resolution, num_heads, window_size=7, shift_size=0, mlp_ratio=4.,
                            qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path_prob=0., out_f=None,
@@ -444,7 +467,7 @@ def cross_swin_transformer_block(input_x, input_y, dim, input_resolution, num_he
 
 def basic_layer(inputs_x, inputs_y, dim, input_resolution, depth, num_heads, window_size, mlp_ratio=4., qkv_bias=True,
                 qk_scale=None,p_m_merging=None, out_f=None,
-                drop=0., attn_drop=0., drop_path_prob=0., norm_layer=keras.layers.LayerNormalization, downsample=None,
+                drop=0., attn_drop=0., drop_path_prob=0., norm_layer=tf.keras.layers.LayerNormalization, downsample=None,
                 use_checkpoint=False):
     x = inputs_x
     y = inputs_y
@@ -458,6 +481,35 @@ def basic_layer(inputs_x, inputs_y, dim, input_resolution, depth, num_heads, win
     return x, downsample
 
 
+def simple_basic_layer(inputs, dim, input_resolution, depth, num_heads, window_size, mlp_ratio=4., qkv_bias=True,
+                qk_scale=None,p_m_merging=None,
+                drop=0., attn_drop=0., drop_path_prob=0., norm_layer=tf.keras.layers.LayerNormalization, downsample=None,
+                use_checkpoint=False):
+    x = inputs
+    for i in range(depth):
+        x = swin_transformer_block(x, dim=dim, input_resolution=input_resolution, num_heads=num_heads,
+                                   window_size=window_size, shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                   mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop,
+                                   attn_drop=attn_drop, drop_path_prob=drop_path_prob, norm_layer=norm_layer)
+    if downsample:
+        return x, downsample(x, input_resolution, dim=p_m_merging if p_m_merging else dim, norm_layer=norm_layer)
+    return x, downsample
+
+
+def transformer_layer(inputs, dim, input_resolution, depth, num_heads, window_size, mlp_ratio=4., qkv_bias=True,
+                qk_scale=None,p_m_merging=None,
+                drop=0., attn_drop=0., drop_path_prob=0., norm_layer=tf.keras.layers.LayerNormalization, downsample=None,
+                use_checkpoint=False):
+    x = inputs
+    for i in range(depth):
+        x = swin_transformer_block(x, dim=dim, input_resolution=input_resolution, num_heads=num_heads,
+                                   window_size=window_size, shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                   mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop,
+                                   attn_drop=attn_drop, drop_path_prob=drop_path_prob, norm_layer=norm_layer)
+    if downsample:
+        return x, downsample(x, input_resolution, dim=p_m_merging if p_m_merging else dim, norm_layer=norm_layer)
+    return x, downsample
+
 def patch_embed(inputs, img_size=(224, 224), patch_size=(4, 4), in_chans=3, embed_dim=96, norm_layer=None):
     x = inputs
     B, H, W, C = x.get_shape().as_list()
@@ -465,7 +517,7 @@ def patch_embed(inputs, img_size=(224, 224), patch_size=(4, 4), in_chans=3, embe
         1], f"Input image size ({H}*{W}) doesn't match model ({img_size[0]}*{img_size[1]})."
     patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
     # num_patches = patches_resolution[0] * patches_resolution[1]
-    proj = keras.layers.Conv2D(embed_dim, kernel_size=patch_size, strides=patch_size)
+    proj = tf.keras.layers.Conv2D(embed_dim, kernel_size=patch_size, strides=patch_size)
     x = proj(x)
     x = tf.reshape(x, shape=[-1, (H // patch_size[0]) * (W // patch_size[0]), embed_dim])
     if norm_layer:
@@ -474,7 +526,7 @@ def patch_embed(inputs, img_size=(224, 224), patch_size=(4, 4), in_chans=3, embe
     return x
 
 
-def patch_merging(inputs, input_resolution, dim, norm_layer=keras.layers.LayerNormalization):
+def patch_merging(inputs, input_resolution, dim, norm_layer=tf.keras.layers.LayerNormalization):
     x = inputs
     H, W = input_resolution
     B, L, C = x.get_shape().as_list()
@@ -487,7 +539,7 @@ def patch_merging(inputs, input_resolution, dim, norm_layer=keras.layers.LayerNo
     x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
     x = tf.concat([x0, x1, x2, x3], axis=-1)
     x = tf.reshape(x, shape=[-1, (H // 2) * (W // 2), 4 * C])
-    reduction = keras.layers.Dense(2 * dim, use_bias=False)
+    reduction = tf.keras.layers.Dense(2 * dim, use_bias=False)
     norm = norm_layer(epsilon=1e-5)
     x = norm(x)
     x = reduction(x)

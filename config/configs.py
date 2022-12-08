@@ -21,7 +21,7 @@ class Config:
         self.TV_WEIGHT = 10
         self.F_WEIGHT = 100
         self.BUFFER_SIZE = 400
-        self.BATCH_SIZE = 1
+        self.BATCH_SIZE = 32
         self.checkpoint_dir = self.folder + checkpoint_name
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
         self.pix2pix = None
