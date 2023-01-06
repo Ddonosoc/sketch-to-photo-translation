@@ -162,6 +162,6 @@ def fit(train_ds, test_ds, steps, checkpoint, generator, discriminator, config, 
                 print('.', end='', flush=True)
 
             # Save (checkpoint) the model every 5k steps
-            if (step + 1) % 300 == 0:
+            if (step + 1) % 1000 == 0:
                 checkpoint.save(file_prefix=config.checkpoint_prefix)
     checkpoint.save(file_prefix=config.checkpoint_prefix)

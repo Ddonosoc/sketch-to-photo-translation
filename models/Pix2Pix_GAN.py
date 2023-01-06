@@ -53,16 +53,16 @@ def pix2pix_generator(config):
     down_stack = [
         downsample(64, 4, apply_batchnorm=False),  # (batch_size, 128, 128, 64)
         downsample(128, 4),  # (batch_size, 64, 64, 128)
-        downsample(256, 4),  # (batch_size, 32, 32, 256)
-        downsample(512, 4),  # (batch_size, 16, 16, 512)
-        downsample(512, 4),  # (batch_size, 8, 8, 512)
-        downsample(512, 4),  # (batch_size, 4, 4, 512)
+        downsample(512, 4),  # (batch_size, 32, 32, 256)
+        # downsample(512, 4),  # (batch_size, 16, 16, 512)
+        # downsample(512, 4),  # (batch_size, 8, 8, 512)
+        # downsample(512, 4),  # (batch_size, 4, 4, 512)
         # downsample(512, 4),  # (batch_size, 2, 2, 512)
         # downsample(512, 4),  # (batch_size, 1, 1, 512)
     ]
 
     up_stack = [
-        # upsample(512, 4, apply_dropout=True),  # (batch_size, 2, 2, 1024)
+        upsample(512, 4, apply_dropout=True),  # (batch_size, 2, 2, 1024)
         upsample(512, 4, apply_dropout=True),  # (batch_size, 4, 4, 1024)
         upsample(512, 4, apply_dropout=True),  # (batch_size, 8, 8, 1024)
         upsample(512, 4),  # (batch_size, 16, 16, 1024)
@@ -79,12 +79,11 @@ def pix2pix_generator(config):
                                            activation='tanh')  # (batch_size, 256, 256, 3)
 
     x = inputs
-
     # Downsampling through the model
     skips = []
     i = 0
     for down in down_stack:
-        if i == 0:
+        if i == -1:
             x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
             embed_dim = 48
             print(x.get_shape().as_list())
@@ -98,18 +97,23 @@ def pix2pix_generator(config):
 
         skips.append(x)
 
-    size = x.get_shape().as_list()
-    x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
     embed_dim = 256
-    x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-    x = tf.reshape(x, (-1, size[1], size[2], size[3]))
-    trans_skip = tf.reshape(x, (-1, size[1], size[2], size[3]))
-    x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
-    x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-    x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-    x = tf.reshape(x, (-1, size[1], size[2], size[3]))
-    x = tf.keras.layers.Concatenate()([x, trans_skip])
-    skips = reversed(skips[:-1])
+    for t in range(4):
+        size = x.get_shape().as_list()
+        x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
+        x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
+        x = tf.reshape(x, (-1, size[1], size[2], size[3]))
+        x = downsample(512, 4)(x)
+        skips.append(x)
+    x = downsample(512, 4)(x)
+    x = downsample(512, 4)(x)
+    # size = x.get_shape().as_list()
+    # x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
+    # x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
+    # x = tf.reshape(x, (-1, size[1], size[2], size[3]))
+    # x = downsample(512, 4)(x)
+    # x = tf.keras.layers.Concatenate()([x, trans_skip])
+    skips = reversed(skips)
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
         x = up(x)
