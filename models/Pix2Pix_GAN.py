@@ -24,7 +24,7 @@ def downsample(filters, size, apply_batchnorm=True):
     return result
 
 
-def upsample(filters, size, apply_dropout=False):
+def upsample(filters, size, apply_dropout=False, strides=2, output_padding=None):
     """
     Upsample Layer for a GAN network
     """
@@ -32,9 +32,10 @@ def upsample(filters, size, apply_dropout=False):
 
     result = tf.keras.Sequential()
     result.add(
-        tf.keras.layers.Conv2DTranspose(filters, size, strides=2,
+        tf.keras.layers.Conv2DTranspose(filters, size, strides=strides,
                                         padding='same',
                                         kernel_initializer=initializer,
+                                        output_padding=output_padding,
                                         use_bias=False))
 
     result.add(tf.keras.layers.BatchNormalization())
@@ -47,28 +48,46 @@ def upsample(filters, size, apply_dropout=False):
     return result
 
 
+def identity_block(x, filter):
+    x_skip = x
+
+    x = tf.keras.layers.Conv2D(filter, (3, 3), padding='same')(x)
+    x = tf.keras.layers.BatchNormalization(axis=3)(x)
+    x = tf.keras.layers.Activation('relu')(x)
+
+    x = tf.keras.layers.Conv2D(filter, (3, 3), padding='same')(x)
+    x = tf.keras.layers.BatchNormalization(axis=3)(x)
+
+    x = tf.keras.layers.Add()([x, x_skip])
+    x = tf.keras.layers.Activation('relu')(x)
+    return x
+
+
+def convolutional_block(x, filter):
+    x_skip = x
+
+    x = tf.keras.layers.Conv2D(filter, (3, 3), padding='same', strides=(2, 2))(x)
+    x = tf.keras.layers.BatchNormalization(axis=3)(x)
+    x = tf.keras.layers.Activation('relu')(x)
+
+    x = tf.keras.layers.Conv2D(filter, (3, 3), padding='same')(x)
+    x = tf.keras.layers.BatchNormalization(axis=3)(x)
+
+    x_skip = tf.keras.layers.Conv2D(filter, (1, 1), strides=(2, 2))(x_skip)
+
+    x = tf.keras.layers.Add()([x, x_skip])
+    x = tf.keras.layers.Activation('relu')(x)
+    return x
+
+
 def pix2pix_generator(config):
     inputs = tf.keras.layers.Input(shape=[256, 256, 3])
-
-    down_stack = [
-        downsample(64, 4, apply_batchnorm=False),  # (batch_size, 128, 128, 64)
-        downsample(128, 4),  # (batch_size, 64, 64, 128)
-        downsample(512, 4),  # (batch_size, 32, 32, 256)
-        # downsample(512, 4),  # (batch_size, 16, 16, 512)
-        # downsample(512, 4),  # (batch_size, 8, 8, 512)
-        # downsample(512, 4),  # (batch_size, 4, 4, 512)
-        # downsample(512, 4),  # (batch_size, 2, 2, 512)
-        # downsample(512, 4),  # (batch_size, 1, 1, 512)
-    ]
-
     up_stack = [
         upsample(512, 4, apply_dropout=True),  # (batch_size, 2, 2, 1024)
-        upsample(512, 4, apply_dropout=True),  # (batch_size, 4, 4, 1024)
-        upsample(512, 4, apply_dropout=True),  # (batch_size, 8, 8, 1024)
-        upsample(512, 4),  # (batch_size, 16, 16, 1024)
-        upsample(256, 4),  # (batch_size, 32, 32, 512)
-        upsample(128, 4),  # (batch_size, 64, 64, 256)
-        upsample(64, 4),  # (batch_size, 128, 128, 128)
+        upsample(256, 4, apply_dropout=True),  # (batch_size, 4, 4, 1024)
+        upsample(128, 4, apply_dropout=True),  # (batch_size, 8, 8, 1024)
+        upsample(64, 4),  # (batch_size, 16, 16, 1024)
+        upsample(64, 4)
     ]
 
     initializer = tf.random_normal_initializer(0., 0.02)
@@ -81,46 +100,36 @@ def pix2pix_generator(config):
     x = inputs
     # Downsampling through the model
     skips = []
-    i = 0
-    for down in down_stack:
-        if i == -1:
-            x = SwinTransformerBlock.patch_embed(x, img_size=(256, 256))
-            embed_dim = 48
-            print(x.get_shape().as_list())
-            x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-            print(x.get_shape().as_list())
-            x = tf.reshape(x, (-1, 64, 64, 96))
-            x = upsample(64, 4)(x)
-            i += 1
+    # x = tf.keras.layers.ZeroPadding2D((3, 3))(x)
+    x = tf.keras.layers.Conv2D(64, kernel_size=7, strides=2, padding='same')(x)
+    skips.append(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+    x = tf.keras.layers.MaxPool2D(pool_size=3, strides=2, padding='same')(x)
+    block_layers = [3, 4, 6, 3]
+    filter_size = 64
+    for i in range(4):
+        if i == 0:
+            for j in range(block_layers[i]):
+                x = identity_block(x, filter_size)
         else:
-            x = down(x)
+            # One Residual/Convolutional Block followed by Identity blocks
+            # The filter size will go on increasing by a factor of 2
+            filter_size = filter_size * 2
+            x = convolutional_block(x, filter_size)
+            for j in range(block_layers[i] - 1):
+                x = identity_block(x, filter_size)
 
         skips.append(x)
 
-    embed_dim = 256
-    for t in range(4):
-        size = x.get_shape().as_list()
-        x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
-        x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-        x = tf.reshape(x, (-1, size[1], size[2], size[3]))
-        x = downsample(512, 4)(x)
-        skips.append(x)
-    x = downsample(512, 4)(x)
-    x = downsample(512, 4)(x)
-    # size = x.get_shape().as_list()
-    # x = tf.reshape(x, (-1, size[1] * size[2], size[3]))
-    # x = SwinTransformerBlock.transformer(2, embed_dim * 2, max(embed_dim // 32, 4), x, 0.1)
-    # x = tf.reshape(x, (-1, size[1], size[2], size[3]))
-    # x = downsample(512, 4)(x)
-    # x = tf.keras.layers.Concatenate()([x, trans_skip])
-    skips = reversed(skips)
+    skips = reversed(skips[:-1])
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
         x = up(x)
+        print(x.get_shape().as_list(), skip.get_shape().as_list())
         x = tf.keras.layers.Concatenate()([x, skip])
 
     x = last(x)
-
     return tf.keras.Model(inputs=inputs, outputs=x)
 
 

@@ -49,7 +49,7 @@ def train_G(A, B, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, 
         B2A2B = G_A2B(B2A, training=True)
         A2A = G_B2A(A, training=True)
         B2B = G_A2B(B, training=True)
-        pixpix = config.pix2pix
+        pixpix = config.pix2pi
         if pixpix:
             A2B_d_logits = D_B([A2B, B], training=True)
             B2A_d_logits = D_A([B2A, A], training=True)
@@ -135,33 +135,61 @@ def fit(train_ds, test_ds, steps, checkpoint, generator, discriminator, config, 
         step_trainer=train_step, d_optimizer=None, loss_param=None):
     start = time.time()
 
-    for epoch in range(10):
-        print(f"Starting epoch {epoch}")
-        for step, (input_image, target) in enumerate(train_ds):
-            if (step) % 100 == 0:
+    # for epoch in range(10):
+    #     print(f"Starting epoch {epoch}")
+    #     for step, (input_image, target) in enumerate(train_ds):
+    #         if (step) % 100 == 0:
 
-                if step != 0:
-                    print(f'Time taken for 100 steps: {time.time() - start:.2f} sec\n')
+    #             if step != 0:
+    #                 print(f'Time taken for 100 steps: {time.time() - start:.2f} sec\n')
 
-                start = time.time()
+    #             start = time.time()
 
-                # generate_images(generator, example_input, example_target)
-                print(f"Step: {step // 1000}k")
+    #             # generate_images(generator, example_input, example_target)
+    #             print(f"Step: {step // 1000}k")
 
-            step_trainer(input_image=input_image, target=target, step=step, generator=generator,
-                         discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
-                         loss_param=loss_param)
-            # mru = mru_block(input_image, input_image, 64)
-            # I2 = tf.keras.layers.AveragePooling2D(pool_size=2)(input_image)
-            # mru_2 = mru_block(mru, I2, 128)
-            #
-            # print("MRU BLOCK INPUT")
-            # print(mru_2.get_shape())
-            # Training step
-            if (step + 1) % 10 == 0:
-                print('.', end='', flush=True)
+    #         step_trainer(input_image=input_image, target=target, step=step, generator=generator,
+    #                      discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
+    #                      loss_param=loss_param)
+    #         # mru = mru_block(input_image, input_image, 64)
+    #         # I2 = tf.keras.layers.AveragePooling2D(pool_size=2)(input_image)
+    #         # mru_2 = mru_block(mru, I2, 128)
+    #         #
+    #         # print("MRU BLOCK INPUT")
+    #         # print(mru_2.get_shape())
+    #         # Training step
+    #         if (step + 1) % 10 == 0:
+    #             print('.', end='', flush=True)
 
-            # Save (checkpoint) the model every 5k steps
-            if (step + 1) % 1000 == 0:
-                checkpoint.save(file_prefix=config.checkpoint_prefix)
-    checkpoint.save(file_prefix=config.checkpoint_prefix)
+    #         # Save (checkpoint) the model every 5k steps
+    #         if (step + 1) % 1000 == 0:
+    #             checkpoint.save(file_prefix=config.checkpoint_prefix)
+    # checkpoint.save(file_prefix=config.checkpoint_prefix)
+
+    for step, (input_image, target) in train_ds.repeat().take(steps).enumerate().as_numpy_iterator():
+        if (step) % 1000 == 0:
+
+            if step != 0:
+                print(f'Time taken for 1000 steps: {time.time() - start:.2f} sec\n')
+
+            start = time.time()
+
+            # generate_images(generator, example_input, example_target)
+            print(f"Step: {step // 1000}k")
+
+        step_trainer(input_image=input_image, target=target, step=step, generator=generator,
+                     discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
+                     loss_param=loss_param)
+        # mru = mru_block(input_image, input_image, 64)
+        # I2 = tf.keras.layers.AveragePooling2D(pool_size=2)(input_image)
+        # mru_2 = mru_block(mru, I2, 128)
+        #
+        # print("MRU BLOCK INPUT")
+        # print(mru_2.get_shape())
+        # Training step
+        if (step + 1) % 10 == 0:
+            print('.', end='', flush=True)
+
+        # Save (checkpoint) the model every 5k steps
+        if (step + 1) % 5000 == 0:
+            checkpoint.save(file_prefix=config.checkpoint_prefix)
