@@ -49,7 +49,7 @@ def train_G(A, B, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, 
         B2A2B = G_A2B(B2A, training=True)
         A2A = G_B2A(A, training=True)
         B2B = G_A2B(B, training=True)
-        pixpix = config.pix2pi
+        pixpix = config.pix2pix
         if pixpix:
             A2B_d_logits = D_B([A2B, B], training=True)
             B2A_d_logits = D_A([B2A, A], training=True)
@@ -67,6 +67,56 @@ def train_G(A, B, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, 
 
         G_loss = (A2B_g_loss + B2A_g_loss) + (A2B2A_cycle_loss + B2A2B_cycle_loss) * config.cycle_loss_weight + (
                 A2A_id_loss + B2B_id_loss) * config.identity_loss_weight
+
+    G_grad = t.gradient(G_loss, G_A2B.trainable_variables + G_B2A.trainable_variables)
+    generator_optimizer.apply_gradients(zip(G_grad, G_A2B.trainable_variables + G_B2A.trainable_variables))
+
+    return A2B, B2A, {'A2B_g_loss': A2B_g_loss,
+                      'B2A_g_loss': B2A_g_loss,
+                      'A2B2A_cycle_loss': A2B2A_cycle_loss,
+                      'B2A2B_cycle_loss': B2A2B_cycle_loss,
+                      'A2A_id_loss': A2A_id_loss,
+                      'B2B_id_loss': B2B_id_loss}
+
+@tf.function
+def train_GC(A, B, hist, generator_data, discriminator_data, g_loss_fn, cycle_loss_fn, identity_loss_fn, config,
+            generator_optimizer):
+    G_A2B, G_B2A = generator_data
+    D_A, D_B = discriminator_data
+
+    with tf.GradientTape() as t:
+        A2B = G_A2B([A, hist], training=True)
+        B2A = G_B2A(B, training=True)
+        A2B2A = G_B2A(A2B, training=True)
+        B2A2B = G_A2B([B2A, hist], training=True)
+        A2A = G_B2A(A, training=True)
+        B2B = G_A2B([B, hist], training=True)
+        pixpix = config.pix2pix
+        if pixpix:
+            A2B_d_logits = D_B([A2B, B], training=True)
+            B2A_d_logits = D_A([B2A, A], training=True)
+        else:
+            A2B_d_logits = D_B(A2B, training=True)
+            B2A_d_logits = D_A(B2A, training=True)
+
+        A2B_g_loss = g_loss_fn(A2B_d_logits)
+        B2A_g_loss = g_loss_fn(B2A_d_logits)
+
+        A2B2A_cycle_loss = cycle_loss_fn(A, A2B2A)
+        B2A2B_cycle_loss = cycle_loss_fn(B, B2A2B)
+        A2A_id_loss = identity_loss_fn(A, A2A)
+        B2B_id_loss = identity_loss_fn(B, B2B)
+
+        RGB = tf.reshape(A2B, (256 * 256, 3))
+        RGB = tf.cast(RGB, tf.int32)
+        Rhist = tf.histogram_fixed_width(RGB[:, 0], [0, 256], nbins=32)
+        Ghist = tf.histogram_fixed_width(RGB[:, 1], [0, 256], nbins=32)
+        Bhist = tf.histogram_fixed_width(RGB[:, 2], [0, 256], nbins=32)
+        A2Bhist = tf.concat([Rhist, Ghist, Bhist], 0)
+        color_norm = tf.norm(tf.cast(hist-A2Bhist, tf.float32), ord='euclidean')
+
+        G_loss = (A2B_g_loss + B2A_g_loss) + (A2B2A_cycle_loss + B2A2B_cycle_loss) * config.cycle_loss_weight + (
+                A2A_id_loss + B2B_id_loss) * config.identity_loss_weight + config.COLOR_PENALTY * color_norm
 
     G_grad = t.gradient(G_loss, G_A2B.trainable_variables + G_B2A.trainable_variables)
     generator_optimizer.apply_gradients(zip(G_grad, G_A2B.trainable_variables + G_B2A.trainable_variables))
@@ -130,41 +180,30 @@ def cycle_step(input_image, target, step, generator, discriminator, config, summ
         for key_loss in D_loss_dict:
             tf.summary.scalar(key_loss, D_loss_dict[key_loss], step=step)
 
+def cycle_step_color(input_image, target, hist, step, generator, discriminator, config, summary_writer, loss_param,
+               d_optimizer):
+    cycle_loss_fn = loss_param['cycle_loss_fn']
+    identity_loss_fn = loss_param['identity_loss_fn']
+    g_loss_fn = loss_param['g_fn_loss']
+    d_loss_fn = loss_param['d_fn_loss']
+
+    A2B, B2A, G_loss_dict = train_GC(A=input_image, B=target, hist=hist, generator_data=generator, discriminator_data=discriminator,
+                                    g_loss_fn=g_loss_fn, cycle_loss_fn=cycle_loss_fn, identity_loss_fn=identity_loss_fn,
+                                    config=config, generator_optimizer=generator_optimizer)
+
+    D_loss_dict = train_D(A=input_image, B=target, A2B=A2B, B2A=B2A, discriminator_data=discriminator, config=config,
+                          d_optimizer=d_optimizer, d_loss_fn=d_loss_fn)
+
+    with summary_writer.as_default():
+        for key in G_loss_dict:
+            tf.summary.scalar(key, G_loss_dict[key], step=step)
+        for key_loss in D_loss_dict:
+            tf.summary.scalar(key_loss, D_loss_dict[key_loss], step=step)
+
 
 def fit(train_ds, test_ds, steps, checkpoint, generator, discriminator, config, summary_writer,
         step_trainer=train_step, d_optimizer=None, loss_param=None):
     start = time.time()
-
-    # for epoch in range(10):
-    #     print(f"Starting epoch {epoch}")
-    #     for step, (input_image, target) in enumerate(train_ds):
-    #         if (step) % 100 == 0:
-
-    #             if step != 0:
-    #                 print(f'Time taken for 100 steps: {time.time() - start:.2f} sec\n')
-
-    #             start = time.time()
-
-    #             # generate_images(generator, example_input, example_target)
-    #             print(f"Step: {step // 1000}k")
-
-    #         step_trainer(input_image=input_image, target=target, step=step, generator=generator,
-    #                      discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
-    #                      loss_param=loss_param)
-    #         # mru = mru_block(input_image, input_image, 64)
-    #         # I2 = tf.keras.layers.AveragePooling2D(pool_size=2)(input_image)
-    #         # mru_2 = mru_block(mru, I2, 128)
-    #         #
-    #         # print("MRU BLOCK INPUT")
-    #         # print(mru_2.get_shape())
-    #         # Training step
-    #         if (step + 1) % 10 == 0:
-    #             print('.', end='', flush=True)
-
-    #         # Save (checkpoint) the model every 5k steps
-    #         if (step + 1) % 1000 == 0:
-    #             checkpoint.save(file_prefix=config.checkpoint_prefix)
-    # checkpoint.save(file_prefix=config.checkpoint_prefix)
 
     for step, (input_image, target) in train_ds.repeat().take(steps).enumerate().as_numpy_iterator():
         if (step) % 1000 == 0:
@@ -178,6 +217,39 @@ def fit(train_ds, test_ds, steps, checkpoint, generator, discriminator, config, 
             print(f"Step: {step // 1000}k")
 
         step_trainer(input_image=input_image, target=target, step=step, generator=generator,
+                     discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
+                     loss_param=loss_param)
+        # mru = mru_block(input_image, input_image, 64)
+        # I2 = tf.keras.layers.AveragePooling2D(pool_size=2)(input_image)
+        # mru_2 = mru_block(mru, I2, 128)
+        #
+        # print("MRU BLOCK INPUT")
+        # print(mru_2.get_shape())
+        # Training step
+        if (step + 1) % 10 == 0:
+            print('.', end='', flush=True)
+
+        # Save (checkpoint) the model every 5k steps
+        if (step + 1) % 5000 == 0:
+            checkpoint.save(file_prefix=config.checkpoint_prefix)
+
+
+def fit_color(train_ds, test_ds, steps, checkpoint, generator, discriminator, config, summary_writer,
+        step_trainer=train_step, d_optimizer=None, loss_param=None):
+    start = time.time()
+
+    for step, (input_image, target, hist) in train_ds.repeat().take(steps).enumerate().as_numpy_iterator():
+        if (step) % 1000 == 0:
+
+            if step != 0:
+                print(f'Time taken for 1000 steps: {time.time() - start:.2f} sec\n')
+
+            start = time.time()
+
+            # generate_images(generator, example_input, example_target)
+            print(f"Step: {step // 1000}k")
+
+        step_trainer(input_image=input_image, target=target, hist=hist, step=step, generator=generator,
                      discriminator=discriminator, config=config, summary_writer=summary_writer, d_optimizer=d_optimizer,
                      loss_param=loss_param)
         # mru = mru_block(input_image, input_image, 64)

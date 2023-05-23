@@ -88,6 +88,24 @@ def load_image_train(image_file):
     return input_image, real_image
 
 
+def load_image_train_color(image_file):
+    """
+    Load train Dataset Image and apply transformations to the input and real image. It must apply random jitter,
+    because the Pix2Pixflow
+    """
+    input_image, real_image = load(image_file)
+    input_image, real_image = random_jitter(input_image, real_image, IMG_HEIGHT, IMG_WIDTH)
+    input_image, real_image = normalize(input_image, real_image)
+    RGB = tf.reshape(real_image, (256 * 256, 3))
+    RGB = tf.cast(RGB, tf.int32)
+    Rhist = tf.histogram_fixed_width(RGB[:, 0], [0, 256], nbins=32)
+    Ghist = tf.histogram_fixed_width(RGB[:, 1], [0, 256], nbins=32)
+    Bhist = tf.histogram_fixed_width(RGB[:, 2], [0, 256], nbins=32)
+    hist = tf.concat([Rhist, Ghist, Bhist], 0)
+
+    return input_image, real_image, hist
+
+
 def load_image_test(image_file):
     """
     Load test Dataset image. The Function doesn't apply transformation as random jitter, because those kind of

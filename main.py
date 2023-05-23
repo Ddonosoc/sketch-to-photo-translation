@@ -4,14 +4,14 @@ import os
 import datetime
 
 from models.Cycle_LOSS import get_adversarial_losses_fn
-from models.Pix2Pix_GAN import pix2pix_generator, pix2pix_discriminator
+from models.Pix2Pix_GAN import pix2pix_generator, pix2pix_discriminator, pix2pix_generator_color
 from models.Cycle_GAN import CycleResnetGenerator, CycleConvDiscriminator
 from models.UnetAttention import UNetDiffusion
 from models.CycleUtils import get_optimizers
 from models import Pix2PixUtils
-from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2, load_image_testv2
+from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2, load_image_testv2, load_image_train_color
 from config.configs import Config
-from runner import fit, cycle_step, train_step
+from runner import fit, fit_color, cycle_step, train_step, cycle_step_color
 from PIL import Image
 
 if __name__ == "__main__":
@@ -56,8 +56,8 @@ if __name__ == "__main__":
 
     elif pargs.network == "cycle":
         print("Loading Cycle Network")
-        G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
+        # G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
+        # G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
         # first_conv_channels = 64
         # channel_multiplier = [1, 2, 4, 8]
         # widths = [first_conv_channels * mult for mult in channel_multiplier]
@@ -81,9 +81,9 @@ if __name__ == "__main__":
         #     activation_fn=tf.keras.activations.swish
         #     )
         configs.pix2pix = False
-        configs.transformer = True
-        # G_A2B = pix2pix_generator(configs)
-        # G_B2A = pix2pix_generator(configs)
+        configs.transformer = False
+        G_A2B = pix2pix_generator_color(configs)
+        G_B2A = pix2pix_generator(configs)
         D_A2B = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         print("GENERATOR")
         print("============================")
@@ -111,7 +111,8 @@ if __name__ == "__main__":
             "g_fn_loss": g_fn_loss
         }
 
-        step_trainer = cycle_step
+        step_trainer = cycle_step_color
+        # step_trainer = cycle_step
 
         checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                          discriminator_optimizer=discriminator_optimizer,
@@ -140,7 +141,7 @@ if __name__ == "__main__":
 
     AUTOTUNE = tf.data.experimental.AUTOTUNE
     train_dataset = tf.data.Dataset.list_files(configs.folder_dataset_train + '*.png')
-    train_dataset = train_dataset.map(load_image_train,
+    train_dataset = train_dataset.map(load_image_train_color,
                                       num_parallel_calls=AUTOTUNE)
     train_dataset = train_dataset.shuffle(configs.BUFFER_SIZE)
     train_dataset = train_dataset.batch(configs.BATCH_SIZE)
@@ -175,7 +176,7 @@ if __name__ == "__main__":
 
     if pargs.mode == "train":
         print("Training...")
-        fit(train_dataset, test_dataset, steps=len(train_dataset)*8, checkpoint=checkpoint,
+        fit_color(train_dataset, test_dataset, steps=len(train_dataset)*8, checkpoint=checkpoint,
             generator=generator, discriminator=discriminator, config=configs,
             summary_writer=summary_writer, step_trainer=step_trainer, d_optimizer=discriminator_optimizer,
             loss_param=losses_param)
