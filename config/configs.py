@@ -11,6 +11,7 @@ class Config:
         self.folder_dataset_train = 'D:/Tesis/Databases/datasets/pix2pixDafitiQuickdraw/train/'
         self.folder_dataset_test = 'D:/Tesis/Models/Evaluation/ResNet50/experiments_results/testBC/'
         self.dataset_foldername = "D:\\Tesis\\Models\\Evaluation\\ResNet50\\experiments_results\\testC\\testC\\"
+        self.dataset_color = "D:\\Tesis\\Databases\\dataset\\purse\\image\\"
         self.symbol_replacement = "\\"
         self.folder_dest = self.folder + "results" + self.symbol_replacement
         self.IMG_HEIGHT = IMG_HEIGHT

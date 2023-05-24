@@ -2,6 +2,7 @@ import tensorflow as tf
 import argparse
 import os
 import datetime
+import random
 
 from models.Cycle_LOSS import get_adversarial_losses_fn
 from models.Pix2Pix_GAN import pix2pix_generator, pix2pix_discriminator, pix2pix_generator_color
@@ -9,14 +10,14 @@ from models.Cycle_GAN import CycleResnetGenerator, CycleConvDiscriminator
 from models.UnetAttention import UNetDiffusion
 from models.CycleUtils import get_optimizers
 from models import Pix2PixUtils
-from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2, load_image_testv2, load_image_train_color
+from image_processing.image_process import load_image_train, load_image_test, load_image_trainv2, load_image_testv2, load_image_train_color, load
 from config.configs import Config
 from runner import fit, fit_color, cycle_step, train_step, cycle_step_color
 from PIL import Image
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Use Quimera Model")
-    parser.add_argument("-mode", type=str, choices=["train", "test", "eval"], help="train or test", required=False,
+    parser.add_argument("-mode", type=str, choices=["train", "test", "eval", "test_color"], help="train or test", required=False,
                         default="train")
     parser.add_argument("-block", type=str, choices=["simple", "mru"], help="simple or mru", required=False,
                         default="simple")
@@ -190,6 +191,36 @@ if __name__ == "__main__":
             # generate_images_v2(generator, images)
             # print(images.shape)
             prediction = generator[0](images, training=True)
+            # print(images[0].numpy())
+            prediction = Image.fromarray(((prediction[0].numpy() * 0.5 + 0.5) * 255).astype('uint8'), 'RGB')
+            # prediction = Image.fromarray((images[0].numpy()).astype('uint8'), 'RGB') # Forma color invertido
+            prediction.save(f"{configs.folder_dest}{filename}")
+        # for example_input, example_target in test_dataset.take(5):
+        #     generate_images(generator, example_input, example_target)
+
+    elif pargs.mode == "test_color":
+        eval_dataset = tf.data.Dataset.list_files(configs.dataset_foldername + '*.png', shuffle=False)
+        eval_dataset = eval_dataset.map(load_image_trainv2, num_parallel_calls=AUTOTUNE)
+        sample_filename = random.choice(os.listdir(configs.folder_dataset_train))
+        input_c, real_c = load(f"{configs.folder_dataset_train}{sample_filename}")
+        real_image = real_c
+
+        RGB = tf.reshape(real_image, (256 * 256, 3))
+        RGB = tf.cast(RGB, tf.int32)
+        Rhist = tf.histogram_fixed_width(RGB[:, 0], [0, 256], nbins=32)
+        Ghist = tf.histogram_fixed_width(RGB[:, 1], [0, 256], nbins=32)
+        Bhist = tf.histogram_fixed_width(RGB[:, 2], [0, 256], nbins=32)
+        hist = tf.concat([Rhist, Ghist, Bhist], 0)
+        
+
+        print(f"Evaluating \t{sample_filename}")
+        for images in eval_dataset:
+            filename = images[1].numpy().decode().split(configs.symbol_replacement)[-1]
+            images = tf.expand_dims(images[0], 0)
+            
+            # generate_images_v2(generator, images)
+            # print(images.shape)
+            prediction = generator[0]([images, hist], training=True)
             # print(images[0].numpy())
             prediction = Image.fromarray(((prediction[0].numpy() * 0.5 + 0.5) * 255).astype('uint8'), 'RGB')
             # prediction = Image.fromarray((images[0].numpy()).astype('uint8'), 'RGB') # Forma color invertido
