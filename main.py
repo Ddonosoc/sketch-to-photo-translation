@@ -57,33 +57,9 @@ if __name__ == "__main__":
 
     elif pargs.network == "cycle":
         print("Loading Cycle Network")
-        # G_A2B = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        # G_B2A = CycleResnetGenerator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), use_mru=False)
-        # first_conv_channels = 64
-        # channel_multiplier = [1, 2, 4, 8]
-        # widths = [first_conv_channels * mult for mult in channel_multiplier]
-        # has_attention = [False, False, True, True]
-        # num_res_blocks = 2  # Number of residual blocks
-        # norm_groups = 8
-        # G_A2B = UNetDiffusion(
-        #     input_shape=(configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), 
-        #     widths=widths, 
-        #     has_attention=has_attention, 
-        #     num_res_blocks=num_res_blocks, 
-        #     norm_groups=norm_groups, 
-        #     activation_fn=tf.keras.activations.swish
-        #     )
-        # G_B2A = UNetDiffusion(
-        #     input_shape=(configs.IMG_HEIGHT, configs.IMG_WIDTH, 3), 
-        #     widths=widths, 
-        #     has_attention=has_attention, 
-        #     num_res_blocks=num_res_blocks, 
-        #     norm_groups=norm_groups, 
-        #     activation_fn=tf.keras.activations.swish
-        #     )
         configs.pix2pix = False
         configs.transformer = False
-        G_A2B = pix2pix_generator_color_palette(configs)
+        G_A2B = pix2pix_generator(configs)
         G_B2A = pix2pix_generator(configs)
         D_A2B = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
         print("GENERATOR")
@@ -91,8 +67,6 @@ if __name__ == "__main__":
         print(G_A2B.summary())
         print("============================")
         D_B2A = CycleConvDiscriminator((configs.IMG_HEIGHT, configs.IMG_WIDTH, 3))
-        # D_A2B = pix2pix_discriminator()
-        # D_B2A = pix2pix_discriminator()
         generator = [G_A2B, G_B2A]
         discriminator = [D_A2B, D_B2A]
         generator_optimizer, discriminator_optimizer, g_lr_scheduler, d_lr_scheduler = get_optimizers(configs.lr,
@@ -100,7 +74,6 @@ if __name__ == "__main__":
                                                                                                       len_dataset,
                                                                                                       configs.epoch_decay,
                                                                                                       configs.beta_1)
-
         d_fn_loss, g_fn_loss = get_adversarial_losses_fn(configs.loss_mode)
         cycle_loss_fn = tf.losses.MeanAbsoluteError()
         identity_loss_fn = tf.losses.MeanAbsoluteError()
@@ -112,8 +85,8 @@ if __name__ == "__main__":
             "g_fn_loss": g_fn_loss
         }
 
-        step_trainer = cycle_step_color
-        # step_trainer = cycle_step
+        # step_trainer = cycle_step_color
+        step_trainer = cycle_step
 
         checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                          discriminator_optimizer=discriminator_optimizer,
