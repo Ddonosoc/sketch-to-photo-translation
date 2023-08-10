@@ -5,6 +5,8 @@ import tensorflow as tf
 
 
 image_file = 'D:/Tesis/Models/Evaluation/ResNet50/experiments_results/diffusion/500/shoe/shoes/2437700078_2.png'
+
+img2 = 'D:/Tesis/Models/Evaluation/ResNet50/experiments_results/diffusion/500/shoe/shoes/2449500078_2.png'
 image = tf.io.read_file(image_file)
 image = tf.image.decode_jpeg(image)
 RGB = tf.reshape(image, (256 * 256, 3))
@@ -13,6 +15,18 @@ Rhist = tf.histogram_fixed_width(RGB[:, 0], [0, 256], nbins=32)
 Ghist = tf.histogram_fixed_width(RGB[:, 1], [0, 256], nbins=32)
 Bhist = tf.histogram_fixed_width(RGB[:, 2], [0, 256], nbins=32)
 hist = tf.concat([Rhist, Ghist, Bhist], 0)
+
+
+image2 = tf.io.read_file(img2)
+image2 = tf.image.decode_jpeg(image2)
+RGB2 = tf.reshape(image2, (256 * 256, 3))
+RGB2 = tf.cast(RGB2, tf.int32)
+Rhist2 = tf.histogram_fixed_width(RGB2[:, 0], [0, 256], nbins=32)
+Ghist2 = tf.histogram_fixed_width(RGB2[:, 1], [0, 256], nbins=32)
+Bhist2 = tf.histogram_fixed_width(RGB2[:, 2], [0, 256], nbins=32)
+hist2 = tf.concat([Rhist2, Ghist2, Bhist2], 0)
+
+print(tf.norm(tf.cast(hist-hist2, tf.float32), ord='euclidean'))
 
 # imageObj = cv2.imread(image_file)
 # to avoid grid lines
